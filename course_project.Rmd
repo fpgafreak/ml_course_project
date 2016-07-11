@@ -1,0 +1,116 @@
+---
+title: "Machine Learning Course Project"
+author: "fpgafreak"
+date: "July 10, 2016"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Executive Summary
+
+Goal of thi project is to predict the manner in which subjects did exercise based on a set of measurements taken by an array of body sensors.
+
+Final machine learning algorithm was applied to the 20 test cases available in the test data, and prediction result, when submitted to the Course Project Prediction Quiz, was automatically graded as 100%.
+
+
+## Data downloading and clean-up
+
+Data files are available at  
+<https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv> (training set)  
+<https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv> (testing set)  
+and were loaded in working directory using the following code:
+
+``` {r warning=FALSE, message=FALSE} 
+library(caret)
+
+url_raw_training <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+file_dest_training <- "pml-training.csv"
+download.file(url=url_raw_training, destfile=file_dest_training, method="auto")
+training <- read.csv(file_dest_training)
+
+url_raw_testing <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+file_dest_testing <- "pml-testing.csv"
+download.file(url=url_raw_testing, destfile=file_dest_testing, method="auto")
+testing <- read.csv(file_dest_testing)
+
+```
+
+Initial inspection showed a number of columns not containing any data as well as subject id and similar variables that may be confusing if used by machine learning algorthm. These columns were eliminated from data:
+
+``` {r warning=FALSE, message=FALSE}
+has.data <- function (X) { sum(ifelse(is.na(X),0,1)) != 0 }
+
+columns.meaningful <- apply(testing, 2, has.data) 
+
+# remove NA columns
+testing.meaningful <- testing[,columns.meaningful == TRUE]
+
+# remove columns not needed for training
+predictor.names <- names(testing.meaningful[,c(-1,-2,-3,-4,-5,-6,-7, -60)])
+training.columns <- c(predictor.names, "classe")
+
+training.neat <- training[,training.columns]
+testing.neat <- testing[,predictor.names]
+```
+
+Then we check if there are any near zero variance predictors:
+
+```{r}
+nearZeroVar(training.neat, saveMetrics=TRUE)
+```
+
+
+##  Machine Learning Algorithm
+
+We separate training set into training data (70%) and testing data (30%) and train with preprocessing and cross validation:   
+
+```{r warning=FALSE, message=FALSE}
+set.seed(29467)
+ts <- createDataPartition(training.neat$classe, p=.7, list=FALSE)
+train_data <- training.neat[ts,]
+valid_data <- training.neat[-ts,]
+
+set.seed(666)
+mod_rf <- train(classe~., data=train_data, preProcess=c("center", "scale"), trControl=trainControl(method = "cv", number = 4), method="rf")
+
+mod_rf$finalModel
+```
+
+Model's eroor estimate looks reasonably good. We check it on training data first
+
+```{r warning=FALSE, message=FALSE}
+prediction_in <- predict(mod_rf, newdata=train_data)
+length(prediction_in[train_data$classe == prediction_in])/length(prediction_in)
+```
+
+(100% in sample correct prediction)  
+and on out validation data we get
+
+```{r}
+prediction_out <- predict(mod_rf, newdata=valid_data)
+length(prediction_out[valid_data$classe == prediction_out])/length(prediction_out)
+```
+
+(99.32% correct predictions, or 0.68% out of sample error). Confusion matrix provides more details:
+
+```{r}
+confusionMatrix(prediction_out, valid_data$classe)
+```
+
+
+## Results
+
+Now we predict on testing data
+
+```{r}
+predict(mod_rf, newdata=testing.neat)
+```
+
+The resulting prediction looks like expected values in Course Project Prediction Quiz.
+
+## References
+
+1. Human Activity Recognition Project <http://groupware.les.inf.puc-rio.br/har>
